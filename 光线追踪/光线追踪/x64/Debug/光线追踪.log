@@ -1,8 +1,6 @@
 ﻿  main.cpp
 f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\tool.h(9): warning C4244: “参数”: 从“time_t”转换到“unsigned int”，可能丢失数据
 f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\tool.h(13): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
-f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\bvh.h(127): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
-f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\bvh.h(131): warning C4267: “参数”: 从“size_t”转换到“int”，可能丢失数据
 f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\objecttexture.h(53): warning C4267: “+=”: 从“size_t”转换到“int”，可能丢失数据
 f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\objecttexture.h(55): warning C4267: “+=”: 从“size_t”转换到“int”，可能丢失数据
 f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\objecttexture.h(62): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
@@ -14,5 +12,4 @@ f:\grayleaf\git\程序\光线追踪\光线追踪\光线追踪\objecttexture.h(10
           [
               _Ty=unsigned int
           ]
-LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
   光线追踪.vcxproj -> F:\grayleaf\git\程序\光线追踪\光线追踪\x64\Debug\光线追踪.exe

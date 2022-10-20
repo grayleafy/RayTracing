@@ -98,6 +98,13 @@ int main()
 	Model model("objects/first-cube.obj");
 	scene.pushModel(model);
 
+	//建立BVH树
+	BVHTree tree;
+	tree.build(scene.meshes);
+
+
+	return 0;
+
 	//设置三角形纹理
 	getTexture(scene.meshes, RayTracerShader, ObjTex);
 

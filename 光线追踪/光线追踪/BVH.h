@@ -56,6 +56,12 @@ public:
 	}
 };
 
+//三角形位置排序比较函数
+static int BVH_dimension = 0;
+bool cmpTriangle(Triangle &a, Triangle &b) {
+	return a.center[BVH_dimension - 1] < b.center[BVH_dimension - 1];
+}
+
 //返回下边界
 glm::vec3 getMinBound(glm::vec3 a, glm::vec3 b) {
 	float x = min(a.x, b.x);
@@ -121,24 +127,61 @@ public:
 			maxBound = getMaxBound(maxBound, triangles[i].getMax());
 			minBound = getMinBound(minBound, triangles[i].getMin());
 		}
-		root = new BVHNode;
-		root->maxBound = maxBound;
-		root->minBound = minBound;
-		root->triangleNum = triangles.size();
+		
+		
 
 		
 		//建树
-		split(root, 0, triangles.size());
+		root = new BVHNode;
+		split(root, triangles.begin(), triangles.end());
 
 	}
 
 	//分割节点，左闭右开
-	void split(BVHNode *now, int l, int r) {
-		if (now->triangleNum <= 0)	return;
-		root->calDimension();
+	void split(BVHNode *now, vector<Triangle>::iterator begin, vector<Triangle>::iterator end) {
+		//求包围盒
+		now->maxBound = begin->getMax();
+		now->minBound = begin->getMin();
+		now->triangleNum = 1;
+		for (auto it = begin + 1; it != end; it++) {
+			now->maxBound = getMaxBound(now->maxBound, it->getMax());
+			now->minBound = getMinBound(now->minBound, it->getMin());
+			now->triangleNum++;
+		}
 
-		//求分割点，然后巴拉巴拉
+		//输出
+		int printFlag = 0;
+		if (printFlag) {
+			cout << "node: (" << now->maxBound.x << ", " << now->maxBound.y << ", " << now->maxBound.z << "), ("
+						   	<< now->minBound.x << ", " << now->minBound.y << ", " << now->minBound.z << ")\n";
+		}
+
+		//保存三角形
+		if (begin + 1 == end) {		
+			now->triangleNum = 1;
+			now->triangle = *begin;
+			return;
+		}
+
+		//计算分割维度
+		now->calDimension();
+		//cout << "dimension:" << now->dimension << endl;
+		//cout << "size： " << now->triangleNum << endl;
+
+		//求分割点
+		int mid = now->triangleNum / 2;
+		BVH_dimension = now->dimension;
+		int dim = now->dimension;
+		nth_element(begin, begin + mid, end, [dim](const Triangle &a, const Triangle &b) {return a.center[dim - 1] < b.center[dim - 1]; });
+		//cout << "mid: " << mid << "ok\n";
+
+		now->lc = new BVHNode;
+		split(now->lc, begin, begin + mid);
+		now->rc = new BVHNode;
+		split(now->rc, begin + mid, end);
 	}
+
+
 };
 
 
