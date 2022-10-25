@@ -34,10 +34,8 @@ public:
 
 
 	void getCenter() {
-		center = glm::vec3(0.0f, 0.0f, 0.0f);
-		for (int i = 0; i < 3; i++) {
-			center += v[i] / 3.0f;
-		}
+		center = getMax() + getMin();
+		center /= 2.0;
 	}
 
 	//返回最小边界
@@ -54,6 +52,8 @@ public:
 		float z = max(max(v[0].z, v[1].z), v[2].z);
 		return glm::vec3(x, y, z);
 	}
+
+	
 };
 
 //三角形位置排序比较函数
@@ -81,30 +81,44 @@ glm::vec3 getMaxBound(glm::vec3 a, glm::vec3 b) {
 class BVHNode {
 public:
 	glm::vec3 minBound, maxBound;
-	int dimension;
+	int dimension = -1;;
 	int triangleNum;
-	Triangle triangle;
+	int index;
 	BVHNode *lc, *rc;
 
 	//计算分割维度
 	void calDimension() {
 		glm::vec3 dif = maxBound - minBound;
-		if (dif.x > dif.y && dif.x > dif.z)	dimension = 1;
-		else if (dif.y > dif.z)				dimension = 2;
-		else								dimension = 3;
+		if (dif.x > dif.y && dif.x > dif.z)	dimension = 0;
+		else if (dif.y > dif.z)				dimension = 1;
+		else								dimension = 2;
 	}
 };
+
+//线性BVH结点
+class LinearBVHNode {
+public:
+	glm::vec3 minBound, maxBound;
+	int triangleNum;
+	int offsetOrRc;
+	int axis;
+};
+
 
 //树
 class BVHTree {
 public:
 	BVHNode *root;
+	LinearBVHNode *linearTree;
+	int LinearTreeCnt = 0;
 	vector<Triangle> triangles;
+	int size = 0;
 
 	void build(vector<Mesh> &meshes) {
 		//读取三角形
+		//int cnt = 0;
 		for (int i = 0; i < meshes.size(); i++) {
-			for (int j = 0; 3 * j < meshes[i].indices.size(); j += 3) {
+			for (int j = 0; j < meshes[i].indices.size(); j += 3) {
 				Triangle temp;
 				temp.ka = meshes[i].ambient;
 				temp.kd = meshes[i].diffuse;
@@ -120,6 +134,9 @@ public:
 			}
 		}
 		
+		//cout << "triangle size : " << triangles.size() << endl;
+		//cout << "mesh size :" << cnt << endl;
+
 		//求根节点包围盒
 		glm::vec3 maxBound = triangles[0].getMax();
 		glm::vec3 minBound = triangles[0].getMin();
@@ -133,9 +150,39 @@ public:
 		
 		//建树
 		root = new BVHNode;
+		size = 1;
 		split(root, triangles.begin(), triangles.end());
 
 	}
+
+	class Bound {
+	public:
+		glm::vec3 maxP, minP;
+
+
+		Bound() {
+
+		}
+
+		Bound(glm::vec3 maxP, glm::vec3 minP) {
+			this->maxP = maxP;
+			this->minP = minP;
+		}
+
+		Bound(Triangle tri) {
+			maxP = tri.getMax();
+			minP = tri.getMin();
+		}
+
+		Bound getUnion(Bound b) {
+			return Bound(getMaxBound(maxP, b.maxP), getMinBound(minP, b.minP));
+		}
+
+		float getArea() {
+			glm::vec3 dif = maxP - minP;
+			return 2.0 * (dif.x * dif.y + dif.x * dif.z + dif.y + dif.z);
+		}
+	};
 
 	//分割节点，左闭右开
 	void split(BVHNode *now, vector<Triangle>::iterator begin, vector<Triangle>::iterator end) {
@@ -159,7 +206,7 @@ public:
 		//保存三角形
 		if (begin + 1 == end) {		
 			now->triangleNum = 1;
-			now->triangle = *begin;
+			now->index = begin - triangles.begin();
 			return;
 		}
 
@@ -172,16 +219,87 @@ public:
 		int mid = now->triangleNum / 2;
 		BVH_dimension = now->dimension;
 		int dim = now->dimension;
-		nth_element(begin, begin + mid, end, [dim](const Triangle &a, const Triangle &b) {return a.center[dim - 1] < b.center[dim - 1]; });
-		//cout << "mid: " << mid << "ok\n";
+		nth_element(begin, begin + mid, end, [dim](const Triangle &a, const Triangle &b) {return a.center[dim] < b.center[dim]; });
+		
+
+		//SAH优化
+		/*
+		int n = 0;
+		for (auto it = begin; it != end; it++)	n++;
+		int axis = 0;
+		int mid = 0;
+		float area = 10000000000.0f;
+		for (int i = 0; i < 3; i++) {
+			sort(begin, end, [i](const Triangle &a, const Triangle &b) {return a.center[i] < b.center[i]; });
+			vector<Bound> boundLeft(n), boundRight(n);
+			boundLeft[0] = (Bound(*begin));
+			boundRight[n - 1] = (Bound(*(end - 1)));
+			for (int j = 1; j < n; j++){
+				boundLeft[j] = boundLeft[j - 1].getUnion(Bound(*(begin + j)));
+				boundRight[n - 1 - j] = boundRight[n - 1 - j + 1].getUnion(Bound(*(end - 1 - j)));
+			}
+
+			for (int j = 0; j < n - 1; j++) {
+				float area_t = boundLeft[j].getArea() + boundRight[j + 1].getArea();
+				if (area_t < area) {
+					area = area_t;
+
+					axis = i;
+					mid = j;
+				}
+			}
+		}
+
+		sort(begin, end, [axis](const Triangle &a, const Triangle &b) {return a.center[axis] < b.center[axis]; });
+		mid++;
+		now->dimension = axis;
+		*/
 
 		now->lc = new BVHNode;
+		size++;
 		split(now->lc, begin, begin + mid);
 		now->rc = new BVHNode;
+		size++;
 		split(now->rc, begin + mid, end);
 	}
 
+	//构造线性BVH树
+	void buildLinerTree() {
+		linearTree = new LinearBVHNode[size];
 
+		addLinearNode(root);
+	}
+
+	void addLinearNode(BVHNode *now) {
+		int k = LinearTreeCnt++;
+		linearTree[k].maxBound = now->maxBound;
+		linearTree[k].minBound = now->minBound;
+		linearTree[k].triangleNum = now->triangleNum;
+		linearTree[k].offsetOrRc = now->index;
+		linearTree[k].axis = now->dimension;
+		
+
+		if (linearTree[k].triangleNum == 1)	return;
+
+		if (now->lc != NULL)	addLinearNode(now->lc);
+		linearTree[k].offsetOrRc = LinearTreeCnt;
+		if (now->rc != NULL)	addLinearNode(now->rc);
+	}
+
+	/*
+	void printLinearNode(int k) {
+		if (linearTree[k].rc < k && linearTree[k].triangleNum != 1) {
+			cout << "linearNode: (" << linearTree[k].maxBound.x << ", " << linearTree[k].maxBound.y << ", " << linearTree[k].maxBound.z << "), ("
+				<< linearTree[k].minBound.x << ", " << linearTree[k].minBound.y << ", " << linearTree[k].minBound.z << ")\n";
+			cout << "k = " << k << ", rc = " << linearTree[k].rc << endl;
+			cout << "size: " << linearTree[k].triangleNum << endl;
+		}
+		
+		if (linearTree[k].triangleNum == 1)	return;
+		printLinearNode(k + 1);
+		printLinearNode(linearTree[k].rc);
+	}
+	*/
 };
 
 

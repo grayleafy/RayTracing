@@ -2,16 +2,25 @@
 out vec4 FragColor;
 
 in vec2 TexCoords;
+int debugFlag = 0;
 
 //贴图
 uniform sampler2D historyTexture; //历史纹理
 uniform sampler2D texVertex; //点坐标
 uniform sampler2D texIndex; //索引
 uniform sampler2D texMaterial; //材质光照参数
+uniform sampler2D texTriangle; //三角形数据
+uniform sampler2D texBVH; //BVH树的数据
 
 
 uniform int vertexNum;
 uniform int indexNum;
+uniform int triangleNum;
+uniform int bvhNum;
+
+struct Bound3f {
+	vec3 pMin, pMax;
+};
 
 // ************ 随机数功能 ************** //
 uniform float randOrigin;
@@ -49,70 +58,124 @@ struct Triangle {
 	vec3 v0, v1, v2;
 	vec3 n0, n1, n2;
 	vec2 u0, u1, u2;
-	vec3 ka, kd, ks;
+	vec3 ka, kd, ks; //ks代表反射率，折射率，粗糙度
 };
-float At(sampler2D dataTex, float index) {
-	float row = (index + 0.5) / textureSize(dataTex, 0).x;
-	float y = (int(row) + 0.5) / textureSize(dataTex, 0).y;
-	float x = (index + 0.5 - int(row) * textureSize(dataTex, 0).x) / textureSize(dataTex, 0).x;
-	vec2 texCoord = vec2(x, y);
-	return texture2D(dataTex, texCoord).x;
-}
 
-Triangle getTriangle(int index) {
-	Triangle tri_t;
-	float face0Index = At(texIndex, float(index * 3));
-	float face1Index = At(texIndex, float(index * 3 + 1));
-	float face2Index = At(texIndex, float(index * 3 + 2));
+struct Sphere {
+	vec3 center;
+	float radius;
+	vec3 albedo;
+	float specularRate;
+	float refractionRate;
+	float roughness;
+};
+uniform Sphere sphere[10];
+uniform int sphereNum = 0;
 
-	tri_t.v0.x = At(texVertex, face0Index * 8.0);
-	tri_t.v0.y = At(texVertex, face0Index * 8.0 + 1.0);
-	tri_t.v0.z = At(texVertex, face0Index * 8.0 + 2.0);
-
-	tri_t.v1.x = At(texVertex, face1Index * 8.0);
-	tri_t.v1.y = At(texVertex, face1Index * 8.0 + 1.0);
-	tri_t.v1.z = At(texVertex, face1Index * 8.0 + 2.0);
-
-	tri_t.v2.x = At(texVertex, face2Index * 8.0);
-	tri_t.v2.y = At(texVertex, face2Index * 8.0 + 1.0);
-	tri_t.v2.z = At(texVertex, face2Index * 8.0 + 2.0);
-
-	//材质
-	tri_t.ka.x = At(texMaterial, face0Index * 9.0);
-	tri_t.ka.y = At(texMaterial, face0Index * 9.0 + 1.0);
-	tri_t.ka.z = At(texMaterial, face0Index * 9.0 + 2.0);
-
-	tri_t.kd.x = At(texMaterial, face0Index * 9.0 + 3.0);
-	tri_t.kd.y = At(texMaterial, face0Index * 9.0 + 4.0);
-	tri_t.kd.z = At(texMaterial, face0Index * 9.0 + 5.0);
-
-	tri_t.ks.x = At(texMaterial, face0Index * 9.0 + 6.0);
-	tri_t.ks.y = At(texMaterial, face0Index * 9.0 + 7.0);
-	tri_t.ks.z = At(texMaterial, face0Index * 9.0 + 8.0);
+//获取纹理数据
+float At(sampler2D dataTex, int index) {
+	//float row = (index + 0.5) / textureSize(dataTex, 0).x;
+	//float y = (int(row) + 0.5) / textureSize(dataTex, 0).y;
+	//float x = (index + 0.5 - int(row) * textureSize(dataTex, 0).x) / textureSize(dataTex, 0).x;
+	//vec2 texCoord = vec2(x, y);
 	
-	//tri_t.v0 = tri[0].v0;
-	//tri_t.v1 = tri[0].v1;
-	//tri_t.v2 = tri[0].v2;
+	//return texture2D(dataTex, texCoord).x;
+	
+	int y = index / textureSize(dataTex, 0).x;
+	int x = index - y * textureSize(dataTex, 0).x;
+	return texelFetch(dataTex, ivec2(x, y), 0).x;
 
-	return tri_t;
 }
 
+struct bvhNode{
+	vec3 maxBound;
+	vec3 minBound;
+	int triangleNum;
+	int offsetOrRc;
+	int axis;
+};
+
+bvhNode getLinearBVHNode(int offset){
+	bvhNode temp;
+	int offset_t = offset * 9;
+	temp.maxBound.x = At(texBVH, offset_t + 0);
+	temp.maxBound.y = At(texBVH, offset_t + 1);
+	temp.maxBound.z = At(texBVH, offset_t + 2);
+
+	temp.minBound.x = At(texBVH, offset_t + 3);
+	temp.minBound.y = At(texBVH, offset_t + 4);
+	temp.minBound.z = At(texBVH, offset_t + 5);
+
+	temp.triangleNum = int(At(texBVH, offset_t + 6) + 0.5);
+	temp.offsetOrRc = int(At(texBVH, offset_t + 7) + 0.5);
+	temp.axis = int(At(texBVH, offset_t + 8) + 0.5);
+
+	return temp;
+}
+
+
+
+//获取三角形
+Triangle getTriangle(int offset){
+	Triangle tri;
+
+	tri.v0.x = At(texTriangle, int(offset * 33 + 0));
+	tri.v0.y = At(texTriangle, int(offset * 33 + 1));
+	tri.v0.z = At(texTriangle, int(offset * 33 + 2));
+	tri.n0.x = At(texTriangle, int(offset * 33 + 3));
+	tri.n0.y = At(texTriangle, int(offset * 33 + 4));
+	tri.n0.z = At(texTriangle, int(offset * 33 + 5));
+	tri.u0.x = At(texTriangle, int(offset * 33 + 6));
+	tri.u0.y = At(texTriangle, int(offset * 33 + 7));
+
+	tri.v1.x = At(texTriangle, int(offset * 33 + 8));
+	tri.v1.y = At(texTriangle, int(offset * 33 + 9));
+	tri.v1.z = At(texTriangle, int(offset * 33 + 10));
+	tri.n1.x = At(texTriangle, int(offset * 33 + 11));
+	tri.n1.y = At(texTriangle, int(offset * 33 + 12));
+	tri.n1.z = At(texTriangle, int(offset * 33 + 13));
+	tri.u1.x = At(texTriangle, int(offset * 33 + 14));
+	tri.u1.y = At(texTriangle, int(offset * 33 + 15));
+
+	tri.v2.x = At(texTriangle, int(offset * 33 + 16));
+	tri.v2.y = At(texTriangle, int(offset * 33 + 17));
+	tri.v2.z = At(texTriangle, int(offset * 33 + 18));
+	tri.n2.x = At(texTriangle, int(offset * 33 + 19));
+	tri.n2.y = At(texTriangle, int(offset * 33 + 20));
+	tri.n2.z = At(texTriangle, int(offset * 33 + 21));
+	tri.u2.x = At(texTriangle, int(offset * 33 + 22));
+	tri.u2.y = At(texTriangle, int(offset * 33 + 23));
+
+	tri.ka.x = At(texTriangle, int(offset * 33 + 24));
+	tri.ka.y = At(texTriangle, int(offset * 33 + 25));
+	tri.ka.z = At(texTriangle, int(offset * 33 + 26));
+
+	tri.kd.x = At(texTriangle, int(offset * 33 + 27));
+	tri.kd.y = At(texTriangle, int(offset * 33 + 28));
+	tri.kd.z = At(texTriangle, int(offset * 33 + 29));
+
+	tri.ks.x = At(texTriangle, int(offset * 33 + 30));
+	tri.ks.y = At(texTriangle, int(offset * 33 + 31));
+	tri.ks.z = At(texTriangle, int(offset * 33 + 32));
+
+	return tri;
+}
 
 //光线定义
 struct Ray {
 	vec3 origin;
 	vec3 direction;
+	float hitMin;
 };
 
 struct hitRecord {
 	vec3 Normal;
 	vec3 Pos;
-	vec3 direction;
 	vec3 albedo;
-	int materialIndex;
-	int triangleIndex;
-	int times;
-	vec3 value;
+	int materialIndex; //0光源， 1漫反射， 2反射， 3折射， 4金属
+	float roughness; //粗糙度
+	float refraction; //折射率
+	float rayHitMin; 
 };
 hitRecord rec;
 
@@ -143,42 +206,219 @@ float hitTriangle(Triangle tri, Ray r) {
 	return t - 0.00001; //防止多次反射
 }
 
-//插值求法线，需修改
-vec3 getTriangleNormal(Triangle tri, vec3 p){
-	return normalize(cross(tri.v2 - tri.v0, tri.v1 - tri.v0));
+// 返回值：ray到球交点的距离
+float hitSphere(Sphere s, Ray r) {
+	vec3 oc = r.origin - s.center;
+	float a = dot(r.direction, r.direction);
+	float b = 2.0 * dot(oc, r.direction);
+	float c = dot(oc, oc) - s.radius * s.radius;
+	float discriminant = b * b - 4 * a * c;
+	if (discriminant > 0.0) {
+		float dis = (-b - sqrt(discriminant)) / (2.0 * a);
+		if (dis > 0.0) return dis;
+		else return -1.0;
+	}
+	else return -1.0;
 }
 
-int hitObject(Ray r){
-	float dis = 100000;
-	bool ifHitTriangle = false;
-	int hitTriangleIndex = -1;
+//插值求法线，需修改
+vec3 getTriangleNormal(Triangle tri, Ray r){
+	vec3 res = normalize(cross(tri.v2 - tri.v0, tri.v1 - tri.v0));
+	if (dot(res, r.direction) > 0)	res = -res;
+	return res;
+}
 
-	// 计算Mesh
-	for (int i = 0; i < indexNum / 3; i++) {
-		float dis_t = hitTriangle(getTriangle(i), r);
-		if (dis_t > 0 && dis_t < dis) {
-			dis = dis_t;
-			hitTriangleIndex = i;
-			ifHitTriangle = true;
+
+
+
+
+vec3 getBoundp(Bound3f bound, int i) {
+	return (i == 0) ? bound.pMin : bound.pMax;
+}
+bool IntersectBound(Bound3f bounds, Ray ray, vec3 invDir, bool dirIsNeg[3]) {
+	// Check for ray intersection against $x$ and $y$ slabs
+	float tMin = (getBoundp(bounds, int(dirIsNeg[0])).x - ray.origin.x) * invDir.x;
+	float tMax = (getBoundp(bounds, 1 - int(dirIsNeg[0])).x - ray.origin.x) * invDir.x;
+	float tyMin = (getBoundp(bounds, int(dirIsNeg[1])).y - ray.origin.y) * invDir.y;
+	float tyMax = (getBoundp(bounds, 1 - int(dirIsNeg[1])).y - ray.origin.y) * invDir.y;
+
+	// Update _tMax_ and _tyMax_ to ensure robust bounds intersection
+	if (tMin > tyMax || tyMin > tMax) return false;
+	if (tyMin > tMin) tMin = tyMin;
+	if (tyMax < tMax) tMax = tyMax;
+
+	// Check for ray intersection against $z$ slab
+	float tzMin = (getBoundp(bounds, int(dirIsNeg[2])).z - ray.origin.z) * invDir.z;
+	float tzMax = (getBoundp(bounds, 1 - int(dirIsNeg[2])).z - ray.origin.z) * invDir.z;
+
+	// Update _tzMax_ to ensure robust bounds intersection
+	if (tMin > tzMax || tzMin > tMax) return false;
+	if (tzMin > tMin) tMin = tzMin;
+	if (tzMax < tMax) tMax = tzMax;
+
+	return tMax > 0;
+}
+
+bool IntersectBound_slow(Bound3f bounds, Ray ray, vec3 invDir, bool dirIsNeg[3]) {
+	// Check for ray intersection against $x$ and $y$ slabs
+	float tMin = (getBoundp(bounds, 1).x - ray.origin.x) / ray.direction.x;
+	float tMax = (getBoundp(bounds, 0).x - ray.origin.x) / ray.direction.x;
+	if (tMin > tMax) {
+		float temp = tMin;
+		tMin = tMax;
+		tMax = temp;
+	}
+	float tyMin = (getBoundp(bounds, 1).y - ray.origin.y) / ray.direction.y;
+	float tyMax = (getBoundp(bounds, 0).y - ray.origin.y) / ray.direction.y;
+	if (tyMin > tyMax) {
+		float temp = tyMin;
+		tyMin = tyMax;
+		tyMax = temp;
+	}
+
+	// Update _tMax_ and _tyMax_ to ensure robust bounds intersection
+	if (tMin > tyMax || tyMin > tMax) return false;
+	if (tyMin > tMin) tMin = tyMin;
+	if (tyMax < tMax) tMax = tyMax;
+
+	// Check for ray intersection against $z$ slab
+	float tzMin = (getBoundp(bounds, 1).z - ray.origin.z) / ray.direction.z;
+	float tzMax = (getBoundp(bounds, 0).z - ray.origin.z) / ray.direction.z;
+	if (tzMin > tzMax) {
+		float temp = tzMin;
+		tzMin = tzMax;
+		tzMax = temp;
+	}
+
+	// Update _tzMax_ to ensure robust bounds intersection
+	if (tMin > tzMax || tzMin > tMax) return false;
+	if (tzMin > tMin) tMin = tzMin;
+	if (tzMax < tMax) tMax = tzMax;
+
+	return tMax > 0;
+}
+
+//求光线碰撞到的三角形
+bool hitBVH(Ray ray){
+	bool hit = false;
+
+	vec3 invDir = vec3(1.0 / ray.direction.x, 1.0 / ray.direction.y, 1.0 / ray.direction.z);
+	bool dirIsNeg[3];
+	dirIsNeg[0] = (invDir.x < 0.0); dirIsNeg[1] = (invDir.y < 0.0); dirIsNeg[2] = (invDir.z < 0.0);
+	// Follow ray through BVH nodes to find primitive intersections
+	int toVisitOffset = 0, currentNodeIndex = 0;
+	int nodesToVisit[256];
+
+	Triangle tri;
+	///*
+	while (true) {
+		bvhNode node = getLinearBVHNode(currentNodeIndex);
+		// Ray 与 BVH的交点
+		Bound3f bound; bound.pMin = node.minBound; bound.pMax = node.maxBound;
+		if (IntersectBound(bound, ray, invDir, dirIsNeg)) {
+			if (node.triangleNum == 1) {
+				// Ray 与 叶节点的交点
+				for (int i = 0; i < node.triangleNum; ++i) {
+					int offset = (node.offsetOrRc + i);
+					Triangle tri_t = getTriangle(offset);
+					float dis_t = hitTriangle(tri_t, ray);
+					if (dis_t > 0 && dis_t < ray.hitMin) {
+						ray.hitMin = dis_t;
+						tri = tri_t;
+						hit = true;
+					}
+				}
+				if (toVisitOffset == 0) break;
+				currentNodeIndex = nodesToVisit[--toVisitOffset];
+			}
+			else {
+				// 把 BVH node 放入 _nodesToVisit_ stack, advance to near
+				if (bool(dirIsNeg[node.axis])) {
+					nodesToVisit[toVisitOffset++] = currentNodeIndex + 1;
+					currentNodeIndex = node.offsetOrRc;
+				}
+				else {
+					nodesToVisit[toVisitOffset++] = node.offsetOrRc;
+					currentNodeIndex = currentNodeIndex + 1;
+				}
+			}
+		}
+		else {
+			if (toVisitOffset == 0) break;
+			currentNodeIndex = nodesToVisit[--toVisitOffset];
 		}
 	}
+	//*/
 
-	if (hitTriangleIndex == -1){
-		return 0;
+	/*
+	float dis = 100000.0;
+	int que[256];
+	que[0] = 0;
+	int cnt = 1;
+	while (cnt > 0) {
+		int offset_t = que[--cnt];
+		bvhNode node = getLinearBVHNode(offset_t);
+		// Ray 与 BVH的交点
+		Bound3f bound; bound.pMin = node.minBound; bound.pMax = node.maxBound;
+		//如果和包围盒有相交
+		if (IntersectBound(bound, ray, invDir, dirIsNeg)) {
+			//如果是叶子节点
+			if (node.triangleNum == 1) {
+				Triangle tri_t = getTriangle(node.offsetOrRc);
+				float dis_t = hitTriangle(tri_t, ray);
+				if (dis_t > 0 && dis_t < ray.hitMin) {
+					ray.hitMin = dis_t;
+					tri = tri_t;
+					hit = true;
+				}
+			}
+			//把两个子结点加入队列
+			else {
+				//if (r.direction[node.axis] > 0.0)
+				que[cnt++] = offset_t + 1;
+				//else
+				que[cnt++] = node.offsetOrRc;
+			}
+		}
 	}
+	*/
 
-	//保存碰撞数据
-	rec.Pos = r.origin + dis * r.direction;
-	rec.triangleIndex = hitTriangleIndex;
-	rec.albedo = vec3(0.87,0.77,0.12);
-	rec.materialIndex = 1;
+	if (hit) {
+		rec.Pos = ray.origin + ray.hitMin * ray.direction;
+		rec.Normal = getTriangleNormal(tri, ray);
+		//rec.albedo = vec3(0.83, 0.73, 0.1);
 
-	return 1;
+		float temp = rand();
+		//光源
+		if (length(tri.ka) > 0.0) {
+			rec.materialIndex = 0;
+			rec.albedo = tri.ka;
+		}
+		//漫反射
+		else if (temp < tri.ks.x) {
+			rec.materialIndex = 1;
+			rec.albedo = tri.kd;
+		}
+		//反射
+		else if (temp < tri.ks.y) {
+			rec.materialIndex = 2;
+			rec.albedo = vec3(1.0, 1.0, 1.0);
+			rec.roughness = tri.ks.z;
+		}
+		//折射
+		else {
+			rec.materialIndex = 3;
+			rec.albedo = vec3(1.0, 1.0, 1.0);
+			rec.refraction = 1.5;
+			rec.roughness = tri.ks.z;
+		}
+		rec.rayHitMin = ray.hitMin;
+		
+	}
+	return hit;
 }
 
 
-hitRecord stack[256];
-int reflectionNum;
 
 vec3 random_in_unit_sphere(){
 	float z = 2.0 * rand() - 1.0;
@@ -190,87 +430,152 @@ vec3 random_in_unit_sphere(){
 
 
 //漫反射方向
-vec3 diffuseReflection(vec3 Normal) {	
-	vec3 temp = random_in_unit_sphere();
-	if (dot(temp, Normal) < 0)	temp = -temp;
-	return temp;	
+//vec3 diffuseReflection_q(vec3 Normal) {	
+//	vec3 temp = random_in_unit_sphere_q();
+//	if (dot(temp, Normal) < 0)	temp = -temp;
+//	return temp;	
+//}
+
+vec3 random_in_unit_sphere_2() {
+	vec3 p;
+	do {
+		p = 2.0 * vec3(rand(), rand(), rand()) - vec3(1, 1, 1);
+	} while (dot(p, p) >= 1.0);
+	return p;
+}
+
+//漫反射
+vec3 diffuseReflection(vec3 Normal) {
+	return normalize(Normal + random_in_unit_sphere());
 }
 
 //镜面反射方向
-vec3 specularReflection(vec3 Normal, vec3 inDirection){
-	return inDirection - 2.0 * dot(Normal, inDirection) * Normal;
+vec3 specularReflection(vec3 Normal, vec3 inDirection, float roughtness){
+	return inDirection - 2.0 * dot(Normal, inDirection) * Normal + roughtness * random_in_unit_sphere();
 }
 
-vec3 shading(Ray r){
-	vec3 color = vec3(0.0f, 0.0f, 0.0f);
-	reflectionNum = 0;
+//折射方向
+vec3 specularRefraction(vec3 Normal, vec3 inDirection, float roughness, float refraction) {
+	Normal *= -dot(inDirection, Normal);
+	vec3 temp = inDirection + Normal;
+	temp /= refraction;
+	temp = temp - Normal;
+	temp = normalize(temp);
+	return temp + roughness * random_in_unit_sphere();
+}
 
-	rec.Pos = r.origin;
-	rec.direction = r.direction;
-	rec.times = 0;
-	rec.value = vec3(1.0f, 1.0f, 1.0f);
-
-	stack[reflectionNum++] = rec;
-
-	vec3 sumValue = vec3(0.0, 0.0, 0.0);
-	while (reflectionNum > 0){
-		hitRecord now = stack[--reflectionNum];
-		r.origin = now.Pos;
-		r.direction = now.direction;
-
-
-		if (hitObject(r) == 1){
-			Triangle tri = getTriangle(rec.triangleIndex);
-
-			//光源
-			if (tri.ka.x > 0.0 || tri.ka.x > 0.0 || tri.ka.x > 0.0){
-				color += vec3(now.value.x * tri.ka.x, now.value.y * tri.ka.y, now.value.z * tri.ka.z);
-				continue;
-			}
-
-			//反射次数上限
-			if (now.times > 5)	continue;
-
-			//漫反射
-			if (length(tri.kd) > 0.0){
-				int t = 10;
-				if (now.times > 1){
-					t = 1;
-				}
-				for (int i = 0; i < t; i++){
-					hitRecord temp;
-					temp.Normal = getTriangleNormal(tri, rec.Pos);
-					if (dot(now.direction, temp.Normal) > 0){
-						temp.Normal = -temp.Normal;
-					}
-					temp.direction = diffuseReflection(temp.Normal);
-					temp.Pos = rec.Pos;
-					temp.value = now.value * sqrt(tri.kd) / t;
-					temp.times = now.times + 1;
-					stack[reflectionNum++] = temp;
-				}
-			}
-			//镜面反射
-			if (length(tri.ks) > 0.0){
-				hitRecord temp;
-				temp.Normal = getTriangleNormal(tri, rec.Pos);
-				if (now.direction.x * temp.Normal.x + now.direction.y * temp.Normal.y + now.direction.z * temp.Normal.z > 0){
-					temp.Normal = -temp.Normal;
-				}
-				temp.direction = specularReflection(temp.Normal, now.direction);
-				temp.Pos = rec.Pos;
-				temp.value = now.value * tri.ks;
-				temp.times = now.times + 1;
-				stack[reflectionNum++] = temp;
-			}
-
-		}
-		else{
-			continue;
+bool hitWorld(Ray r) {
+	bool hit = false;
+	//三角形
+	if (hitBVH(r)) {
+		if (rec.rayHitMin > 0.0 && rec.rayHitMin < r.hitMin) {
+			r.hitMin = rec.rayHitMin;
+			hit = true;
 		}
 	}
-	//还没有除以value
-	//color /= sumValue;
+
+
+	//球
+	for (int i = 0; i < sphereNum; i++) {
+		float dis_t = hitSphere(sphere[i], r);
+		if (dis_t > 0.0 && dis_t < r.hitMin) {
+			r.hitMin = dis_t;
+			hit = true;
+
+			rec.Pos = r.origin + r.hitMin * r.direction;
+			rec.Normal = rec.Pos - sphere[i].center;
+			bool internal = false;
+			if (dot(rec.Normal, r.direction) > 0.0) {
+				rec.Normal = -rec.Normal;
+				internal = true;
+			}
+
+			float temp = rand();
+			//漫反射
+			if (temp < sphere[i].specularRate) {
+				r.hitMin -= 0.00001;
+				rec.Pos = r.origin + r.hitMin * r.direction;
+				rec.Normal = rec.Pos - sphere[i].center;
+				rec.materialIndex = 1;
+				rec.albedo = sphere[i].albedo;
+			}
+			//反射
+			else if (temp < sphere[i].refractionRate) {
+				r.hitMin -= 0.00001;
+				rec.Pos = r.origin + r.hitMin * r.direction;
+				rec.Normal = rec.Pos - sphere[i].center;
+				rec.materialIndex = 2;
+				rec.albedo = vec3(1.0, 1.0, 1.0);
+				rec.roughness = sphere[i].roughness;
+			}
+			//折射
+			else {
+				r.hitMin += 0.00001;
+				rec.Pos = r.origin + r.hitMin * r.direction;
+				rec.Normal = rec.Pos - sphere[i].center;
+				rec.materialIndex = 3;
+				rec.albedo = vec3(1.0, 1.0, 1.0);
+				rec.refraction = internal ? 1.0 / 1.5 : 1.5;
+				rec.roughness = sphere[i].roughness;
+			}
+			rec.rayHitMin = r.hitMin;
+		}
+	}
+
+
+	return hit;
+}
+
+
+vec3 shading(Ray r) {
+	vec3 color = vec3(1.0, 1.0, 1.0);
+	bool hitLight = false;
+	for (int i = 0; i < 10; i++) {
+		if (i > 1) {
+			if (rand() > 0.8) {
+				color = vec3(0, 0, 0);
+				break;
+			}
+		}
+		if (hitWorld(r)) {
+			r.origin = rec.Pos;
+			r.hitMin = 100000;
+
+			color *= rec.albedo;
+			
+			if (rec.materialIndex == 1) {
+				r.direction = diffuseReflection(rec.Normal);
+				color *= dot(r.direction, rec.Normal);
+			}
+			else if (rec.materialIndex == 0) {
+				break;
+			}
+			else if (rec.materialIndex == 2) {
+				r.direction = specularReflection(rec.Normal, r.direction, rec.roughness);
+			}
+			else if (rec.materialIndex == 3) {
+				r.direction = specularRefraction(rec.Normal, r.direction, rec.roughness, rec.refraction);
+			}
+
+			
+		}
+		else {
+			/*
+			if (i == 1) {
+				vec3 lightPos = vec3(-4.0, 4.0, -4.0);
+				vec3 lightDir = normalize(lightPos - rec.Pos);
+				float diff = 0.5 * max(dot(rec.Normal, lightDir), 0.0) + 0.5;
+				color *= vec3(diff, diff, diff);
+			}
+			else {
+				float t = 0.5*(r.direction.y + 1.0);
+				color *= (1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+			}
+			break;
+			*/
+		}
+	}
+	color *= 2.0 * 3.1415926;
 	return color;
 }
 
@@ -286,11 +591,14 @@ void main() {
 	Ray cameraRay;
 	cameraRay.origin = camera.camPos;
 	cameraRay.direction = normalize(camera.leftbottom + (TexCoords.x * 2.0 * camera.halfW) * camera.right + (TexCoords.y * 2.0 * camera.halfH) * camera.up);
-	
+	cameraRay.hitMin = 100000.0;
+
 	//路径追踪
 	vec3 curColor = shading(cameraRay);
+	
+	
 
 	//合并结果
 	curColor = (1.0 / float(camera.LoopNum))*curColor + (float(camera.LoopNum - 1) / float(camera.LoopNum))*hist;
-	FragColor = vec4(curColor, 1.0);
+	if (debugFlag == 0)	FragColor = vec4(curColor, 1.0);
 }

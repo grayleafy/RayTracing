@@ -19,9 +19,9 @@ public:
 		LoopNum = 0;
 		Yaw = -90.0f;
 		Pitch = 0.0f;
-		fov = 22.5f;
+		fov = 45.0f;
 		firstMouse = true;
-		cameraPos = glm::vec3(0.0f, 0.0f, 1.5f);
+		cameraPos = glm::vec3(0.0f, 2.0f, 5.0f);
 		worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
 		ScreenRatio = (float)ScreenWidth / (float)ScreenHeight;
 		halfH = glm::tan(glm::radians(fov));

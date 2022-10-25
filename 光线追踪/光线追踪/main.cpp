@@ -95,19 +95,26 @@ int main()
 	
 	//加载模型
 	Scene scene;
-	Model model("objects/first-cube.obj");
-	scene.pushModel(model);
+	//Model model("objects/first-cube.obj");
+	Model model("objects/room.obj");
+	Model cube("objects/cube.obj");
+	//Model fox("objects/low-poly-fox-by-pixelmannen.obj");
+	scene.pushModel(model, glm::vec3(5.0, 5.0, 5.0), glm::vec3(0.0,5.0,0.0));
+	scene.pushModel(cube, glm::vec3(0.5, 5.0, -1.0), glm::vec3(0.0, 1.0, -2.0));
+	//scene.pushModel(fox, glm::vec3(0.03, 0.03, 0.03), glm::vec3(-3.5, -2.4, 0.0));
+	scene.pushSphere(Sphere(glm::vec3(0, 2.0, 1), 1.5, glm::vec3(0.9, 0.9, 0.9), 0.0, 0.0, 0));
+	scene.pushSphere(Sphere(glm::vec3(-3, 2.0, 1), 1.5, glm::vec3(0.2, 0.2, 0.9), 0.0, 1.0, 0));
 
 	//建立BVH树
 	BVHTree tree;
 	tree.build(scene.meshes);
-
-
-	return 0;
+	tree.buildLinerTree();
+//	tree.printLinearNode(0);
+	
 
 	//设置三角形纹理
-	getTexture(scene.meshes, RayTracerShader, ObjTex);
-
+	getTexture(tree, RayTracerShader, ObjTex);
+	//getTexture(scene.meshes, RayTracerShader, ObjTex);
 	
 	// 渲染大循环
 	while (!glfwWindowShouldClose(window))
@@ -118,6 +125,8 @@ int main()
 		processInput(window);
 		// 渲染循环加1
 		cam.LoopIncrease();
+		cout << "帧耗时: " << tRecord.deltaTime << endl;
+
 
 		//处理帧缓冲
 		{
@@ -135,7 +144,8 @@ int main()
 			RayTracerShader.setFloat("randOrigin", 874264.0f * (GetCPURandom() + 1.0f));
 
 			//绑定三角形信息纹理
-			ObjTex.bindTex(RayTracerShader);
+			ObjTex.bindTexBVH(RayTracerShader);
+			//ObjTex.bindTex(RayTracerShader);
 			
 			// 相机参数赋值
 			RayTracerShader.setVec3("camera.camPos", cam.cameraPos);
@@ -147,11 +157,14 @@ int main()
 			RayTracerShader.setVec3("camera.leftbottom", cam.LeftBottomCorner);
 			RayTracerShader.setInt("camera.LoopNum", cam.LoopNum);
 
-
+			//球体
+			scene.setSphere(RayTracerShader);
 
 			screen.DrawScreen();
 
-
+			// 交换Buffer
+			//glfwSwapBuffers(window);
+			//glfwPollEvents();
 		}
 		//渲染到屏幕
 		{

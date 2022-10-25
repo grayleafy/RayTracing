@@ -23,6 +23,7 @@
     <ProjectGuid>{AF1F2990-D0F9-445A-8BDD-B705AED039A0}</ProjectGuid>
     <RootNamespace>光线追踪</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <ProjectName>光线追踪 BVH加速</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
