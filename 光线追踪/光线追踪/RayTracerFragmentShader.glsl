@@ -1,6 +1,9 @@
 #version 330 core
 out vec4 FragColor;
 
+float PI = 3.1415926535897932384626433832795028841971;
+
+
 in vec2 TexCoords;
 int debugFlag = 0;
 
@@ -18,9 +21,14 @@ uniform int indexNum;
 uniform int triangleNum;
 uniform int bvhNum;
 
+//屏幕分辨率
+uniform int width; 
+uniform int height;
+
 struct Bound3f {
 	vec3 pMin, pMax;
 };
+
 
 // ************ 随机数功能 ************** //
 uniform float randOrigin;
@@ -37,6 +45,69 @@ float randcore(uint seed) {
 float rand() {
 	return randcore(wseed);
 }
+
+//Cranley Patterson Rotation
+uint wang_hash(inout uint seed) {
+	seed = uint(seed ^ uint(61)) ^ uint(seed >> uint(16));
+	seed *= uint(9);
+	seed = seed ^ (seed >> 4);
+	seed *= uint(0x27d4eb2d);
+	seed = seed ^ (seed >> 15);
+	return seed;
+}
+
+vec2 CranleyPattersonRotation(vec2 p) {
+	uint pseed = uint(
+		uint(((TexCoords.x * 2.0 - 1.0) * 0.5 + 0.5) * width)  * uint(1973) +
+		uint(((TexCoords.y * 2.0 - 1.0) * 0.5 + 0.5) * height) * uint(9277) +
+		uint(114514 / 1919) * uint(26699)) | uint(1);
+
+	float u = float(wang_hash(pseed)) / 4294967296.0;
+	float v = float(wang_hash(pseed)) / 4294967296.0;
+
+	p.x += u;
+	if (p.x > 1) p.x -= 1;
+	if (p.x < 0) p.x += 1;
+
+	p.y += v;
+	if (p.y > 1) p.y -= 1;
+	if (p.y < 0) p.y += 1;
+
+	return p;
+}
+
+// ************ 低差异化随机数sobol ************** //
+// 1 ~ 16 维的 sobol 生成矩阵
+uniform uint V[512];
+
+// 格林码 
+uint grayCode(uint i) {
+	return i ^ (i >> 1);
+}
+
+// 生成第 d 维度的第 i 个 sobol 数
+float sobol(uint d, uint i) {
+	uint result = 0u;
+	uint offset = d * 32u;
+	for (uint j = 0u; i != 0u; i >>= 1, j++)
+		if ((i & 1u) != 0u)
+			result ^= V[j + offset];
+
+	return float(result) * (1.0f / float(0xFFFFFFFFU));
+}
+
+// 生成第 i 帧的第 b 次反弹需要的二维随机向量
+vec2 sobolVec2(uint i, uint b) {
+	float u = sobol(b * 2u, grayCode(i));
+	float v = sobol(b * 2u + 1u, grayCode(i));
+	return CranleyPattersonRotation(vec2(u, v));
+}
+
+
+
+
+
+
 
 //屏幕及相机
 uniform int screenWidth;
@@ -60,7 +131,7 @@ struct Triangle {
 	vec2 u0, u1, u2;
 	vec3 ka, kd, ks; //ks代表反射率，折射率，粗糙度
 };
-
+//球体
 struct Sphere {
 	vec3 center;
 	float radius;
@@ -419,6 +490,30 @@ bool hitBVH(Ray ray){
 }
 
 
+// 将向量 v 投影到 N 的法向半球
+vec3 toNormalHemisphere(vec3 v, vec3 N) {
+	vec3 helper = vec3(1, 0, 0);
+	if (abs(N.x) > 0.999) helper = vec3(0, 0, 1);
+	vec3 tangent = normalize(cross(N, helper));
+	vec3 bitangent = normalize(cross(N, tangent));
+	return v.x * tangent + v.y * bitangent + v.z * N;
+}
+
+
+// 余弦加权的法向半球采样
+vec3 SampleCosineHemisphere(float xi_1, float xi_2, vec3 N) {
+	// 均匀采样 xy 圆盘然后投影到 z 半球
+	float r = sqrt(xi_1);
+	float theta = xi_2 * 2.0 * PI;
+	float x = r * cos(theta);
+	float y = r * sin(theta);
+	float z = sqrt(1.0 - x * x - y * y);
+
+	// 从 z 半球投影到法向半球
+	vec3 L = normalize(toNormalHemisphere(vec3(x, y, z), N));
+	return L;
+}
+
 
 vec3 random_in_unit_sphere(){
 	float z = 2.0 * rand() - 1.0;
@@ -429,29 +524,24 @@ vec3 random_in_unit_sphere(){
 
 
 
-//漫反射方向
-//vec3 diffuseReflection_q(vec3 Normal) {	
-//	vec3 temp = random_in_unit_sphere_q();
-//	if (dot(temp, Normal) < 0)	temp = -temp;
-//	return temp;	
-//}
-
 vec3 random_in_unit_sphere_2() {
 	vec3 p;
 	do {
 		p = 2.0 * vec3(rand(), rand(), rand()) - vec3(1, 1, 1);
-	} while (dot(p, p) >= 1.0);
-	return p;
+	} while (dot(p, p) <= 1.0);
+	return normalize(p);
 }
 
 //漫反射
-vec3 diffuseReflection(vec3 Normal) {
-	return normalize(Normal + random_in_unit_sphere());
+vec3 diffuseReflection(vec3 Normal, int hitTimes) {
+	vec2 random = sobolVec2(uint(camera.LoopNum), uint(hitTimes));
+	return SampleCosineHemisphere(random.x, random.y, Normal);
 }
 
 //镜面反射方向
 vec3 specularReflection(vec3 Normal, vec3 inDirection, float roughtness){
-	return inDirection - 2.0 * dot(Normal, inDirection) * Normal + roughtness * random_in_unit_sphere();
+	//return inDirection - 2.0 * dot(Normal, inDirection) * Normal + roughtness * random_in_unit_sphere();
+	return inDirection - 2.0 * dot(Normal, inDirection) * Normal;
 }
 
 //折射方向
@@ -461,7 +551,8 @@ vec3 specularRefraction(vec3 Normal, vec3 inDirection, float roughness, float re
 	temp /= refraction;
 	temp = temp - Normal;
 	temp = normalize(temp);
-	return temp + roughness * random_in_unit_sphere();
+	//return temp + roughness * random_in_unit_sphere();
+	return temp;
 }
 
 bool hitWorld(Ray r) {
@@ -515,7 +606,7 @@ bool hitWorld(Ray r) {
 				rec.Normal = rec.Pos - sphere[i].center;
 				rec.materialIndex = 3;
 				rec.albedo = vec3(1.0, 1.0, 1.0);
-				rec.refraction = internal ? 1.0 / 1.5 : 1.5;
+				rec.refraction = internal ? 1.0 / 1.3 : 1.3;
 				rec.roughness = sphere[i].roughness;
 			}
 			rec.rayHitMin = r.hitMin;
@@ -530,7 +621,7 @@ bool hitWorld(Ray r) {
 vec3 shading(Ray r) {
 	vec3 color = vec3(1.0, 1.0, 1.0);
 	bool hitLight = false;
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 6; i++) {
 		if (i > 1) {
 			if (rand() > 0.8) {
 				color = vec3(0, 0, 0);
@@ -544,8 +635,8 @@ vec3 shading(Ray r) {
 			color *= rec.albedo;
 			
 			if (rec.materialIndex == 1) {
-				r.direction = diffuseReflection(rec.Normal);
-				color *= dot(r.direction, rec.Normal);
+				r.direction = diffuseReflection(rec.Normal, i);
+				color *= dot(r.direction, rec.Normal); //重要性采样后不再需要
 			}
 			else if (rec.materialIndex == 0) {
 				break;
@@ -573,6 +664,7 @@ vec3 shading(Ray r) {
 			}
 			break;
 			*/
+			color = vec3(0, 0, 0);
 		}
 	}
 	color *= 2.0 * 3.1415926;
@@ -595,10 +687,13 @@ void main() {
 
 	//路径追踪
 	vec3 curColor = shading(cameraRay);
-	
+
 	
 
 	//合并结果
 	curColor = (1.0 / float(camera.LoopNum))*curColor + (float(camera.LoopNum - 1) / float(camera.LoopNum))*hist;
 	if (debugFlag == 0)	FragColor = vec4(curColor, 1.0);
+
+	//vec2 random = sobolVec2(uint(camera.LoopNum), uint(0));
+	//FragColor = vec4(random.x, 0.5, 0.0, 1.0);
 }

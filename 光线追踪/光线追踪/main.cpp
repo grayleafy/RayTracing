@@ -14,6 +14,7 @@
 #include "BVH.h"
 #include "ObjectTexture.h"
 #include "Scene.h"
+#include "sobol.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -81,7 +82,7 @@ int main()
 		std::cout << "Failed to initialize GLAD" << std::endl;
 		return -1;
 	}
-	
+
 	// CPU随机数初始化
 	CPURandomInit();
 
@@ -92,14 +93,17 @@ int main()
 	//着色器
 	Shader RayTracerShader("RayTracerVertexShader.glsl", "RayTracerFragmentShader.glsl");
 	Shader ScreenShader("ScreenVertexShader.glsl", "ScreenFragmentShader.glsl");
-	
+
+	//sobol序列初始化
+	setSobol(RayTracerShader);
+
 	//加载模型
 	Scene scene;
 	//Model model("objects/first-cube.obj");
 	Model model("objects/room.obj");
 	Model cube("objects/cube.obj");
 	//Model fox("objects/low-poly-fox-by-pixelmannen.obj");
-	scene.pushModel(model, glm::vec3(5.0, 5.0, 5.0), glm::vec3(0.0,5.0,0.0));
+	scene.pushModel(model, glm::vec3(5.0, 5.0, 5.0), glm::vec3(0.0, 5.0, 0.0));
 	scene.pushModel(cube, glm::vec3(0.5, 5.0, -1.0), glm::vec3(0.0, 1.0, -2.0));
 	//scene.pushModel(fox, glm::vec3(0.03, 0.03, 0.03), glm::vec3(-3.5, -2.4, 0.0));
 	scene.pushSphere(Sphere(glm::vec3(0, 2.0, 1), 1.5, glm::vec3(0.9, 0.9, 0.9), 0.0, 0.0, 0));
@@ -109,13 +113,13 @@ int main()
 	BVHTree tree;
 	tree.build(scene.meshes);
 	tree.buildLinerTree();
-//	tree.printLinearNode(0);
-	
+	//	tree.printLinearNode(0);
 
-	//设置三角形纹理
+
+		//设置三角形纹理
 	getTexture(tree, RayTracerShader, ObjTex);
 	//getTexture(scene.meshes, RayTracerShader, ObjTex);
-	
+
 	// 渲染大循环
 	while (!glfwWindowShouldClose(window))
 	{
@@ -126,14 +130,15 @@ int main()
 		// 渲染循环加1
 		cam.LoopIncrease();
 		cout << "帧耗时: " << tRecord.deltaTime << endl;
+		cout << "LoopNum: " << cam.LoopNum << endl;
 
 
 		//处理帧缓冲
-		{
+		if (cam.LoopNum < 1000000) {
 			// 绑定到当前帧缓冲区
 			screenBuffer.setCurrentBuffer(cam.LoopNum);
 
-			
+
 
 			// 激活着色器
 			RayTracerShader.use();
@@ -146,7 +151,7 @@ int main()
 			//绑定三角形信息纹理
 			ObjTex.bindTexBVH(RayTracerShader);
 			//ObjTex.bindTex(RayTracerShader);
-			
+
 			// 相机参数赋值
 			RayTracerShader.setVec3("camera.camPos", cam.cameraPos);
 			RayTracerShader.setVec3("camera.front", cam.cameraFront);
@@ -156,6 +161,9 @@ int main()
 			RayTracerShader.setFloat("camera.halfW", cam.halfW);
 			RayTracerShader.setVec3("camera.leftbottom", cam.LeftBottomCorner);
 			RayTracerShader.setInt("camera.LoopNum", cam.LoopNum);
+			//屏幕分辨率
+			RayTracerShader.setInt("width", SCR_WIDTH);
+			RayTracerShader.setInt("height", SCR_HEIGHT);
 
 			//球体
 			scene.setSphere(RayTracerShader);
@@ -189,7 +197,7 @@ int main()
 			glfwPollEvents();
 		}
 
-		
+
 	}
 
 	// 条件终止
@@ -233,10 +241,3 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 	cam.updateFov(static_cast<float>(yoffset));
 }
-
-
-
-
-
-
-
