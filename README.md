@@ -6,5 +6,6 @@
 ![0XN432`DGE}FFW )Q9@U_~N](https://user-images.githubusercontent.com/86156654/197753655-0f2885d4-b607-4e26-8f0d-d898bc954c28.png)
 
 ## sobol低差异度序列重要性采样
-![_TN29LWRZ HP(~2IN NTY4G](https://user-images.githubusercontent.com/86156654/202177850-0975f201-e83d-4421-9c20-8910b9f504af.png)
+![(UFZ8GC`C5S6T GF7JW0)KO](https://user-images.githubusercontent.com/86156654/202340393-f8b8339c-b3c4-4e6d-a2b8-cd5d32e658d3.png)
+
 
