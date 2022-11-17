@@ -621,7 +621,7 @@ bool hitWorld(Ray r) {
 vec3 shading(Ray r) {
 	vec3 color = vec3(1.0, 1.0, 1.0);
 	bool hitLight = false;
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 4; i++) {
 		if (i > 1) {
 			if (rand() > 0.8) {
 				color = vec3(0, 0, 0);
@@ -636,9 +636,11 @@ vec3 shading(Ray r) {
 			
 			if (rec.materialIndex == 1) {
 				r.direction = diffuseReflection(rec.Normal, i);
-				color *= dot(r.direction, rec.Normal); //重要性采样后不再需要
+				//color *= dot(r.direction, rec.Normal); 
+				color *= 0.5; //重要性采样后需要乘以权重
 			}
 			else if (rec.materialIndex == 0) {
+				hitLight = true;
 				break;
 			}
 			else if (rec.materialIndex == 2) {
@@ -664,10 +666,11 @@ vec3 shading(Ray r) {
 			}
 			break;
 			*/
-			color = vec3(0, 0, 0);
+			color *= vec3(0.5, 0.5, 0.5);
 		}
 	}
-	color *= 2.0 * 3.1415926;
+	if (hitLight == false)	color = vec3(0, 0, 0);
+	color *= 2.0 * 2.0 * 3.1415926;
 	return color;
 }
 
