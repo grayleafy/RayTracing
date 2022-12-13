@@ -1,11 +1,10 @@
 # RayTracing
 ## OpenGL实现经典光线追踪
-蒙特卡洛采样实现光线效果的叠加，包括漫反射，镜面反射和折射
-效果图如下：
-![F(Q7X(4Y08VE6XJ OFBPDQN](https://user-images.githubusercontent.com/86156654/197746140-4a5b5c61-4a10-4ccc-b99b-ccc1a889366b.png)
-![0XN432`DGE}FFW )Q9@U_~N](https://user-images.githubusercontent.com/86156654/197753655-0f2885d4-b607-4e26-8f0d-d898bc954c28.png)
+蒙特卡洛采样实现光线效果的叠加，包括漫反射，镜面反射和折射，使用sobol低差异度序列重要性采样
+![图片1](https://user-images.githubusercontent.com/86156654/207253227-c553f1db-5c86-4cb8-b3fc-9708a75c0b99.png)
+![图片2](https://user-images.githubusercontent.com/86156654/207253232-a4b75574-9ff7-4961-b446-a5d0ba178bc2.png)
 
-## sobol低差异度序列重要性采样
-![(UFZ8GC`C5S6T GF7JW0)KO](https://user-images.githubusercontent.com/86156654/202340393-f8b8339c-b3c4-4e6d-a2b8-cd5d32e658d3.png)
+
+
 
 
